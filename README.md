@@ -61,7 +61,7 @@ When stdout is not a TTY, the CLI defaults to JSON.
 
 ## Conditions
 
-Icon codes from the upstream feed are normalized to stable English labels:
+Icon codes are normalized to stable English labels:
 `clear`, `partly-cloudy`, `cloudy`, `fog`, `light-rain`, `heavy-rain`,
 `rain-showers`, `thunderstorm`, `light-snow`, `heavy-snow`, `snow-showers`,
 `rain-and-snow`, `partly-cloudy-rain`. The original Dutch description and icon
