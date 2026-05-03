@@ -274,17 +274,17 @@ func newCurrentCmd(rt *Runtime) *cobra.Command {
 				return WriteJSON(rt.Out, "current", res)
 			case OutputPlain:
 				row := map[string]string{
-					"station":           res.Station,
-					"region":            res.Region,
-					"distance_km":       fmt.Sprintf("%.1f", res.DistanceKM),
-					"temperature_c":     fmt.Sprintf("%.1f", res.TemperatureC),
-					"feels_like_c":      fmt.Sprintf("%.1f", res.FeelsLikeC),
-					"humidity_pct":      fmt.Sprintf("%.0f", res.HumidityPct),
-					"wind_ms":           fmt.Sprintf("%.1f", res.WindSpeedMS),
-					"wind_dir":          res.WindDirection,
-					"precip_mm_h":       fmt.Sprintf("%.2f", res.PrecipitationMmH),
-					"condition":         res.Condition,
-					"description":       res.WeatherDescription,
+					"station":       res.Station,
+					"region":        res.Region,
+					"distance_km":   fmt.Sprintf("%.1f", res.DistanceKM),
+					"temperature_c": fmt.Sprintf("%.1f", res.TemperatureC),
+					"feels_like_c":  fmt.Sprintf("%.1f", res.FeelsLikeC),
+					"humidity_pct":  fmt.Sprintf("%.0f", res.HumidityPct),
+					"wind_ms":       fmt.Sprintf("%.1f", res.WindSpeedMS),
+					"wind_dir":      res.WindDirection,
+					"precip_mm_h":   fmt.Sprintf("%.2f", res.PrecipitationMmH),
+					"condition":     res.Condition,
+					"description":   res.WeatherDescription,
 				}
 				WritePlain(rt.Out, []map[string]string{row}, []string{
 					"station", "region", "distance_km", "temperature_c", "feels_like_c",
@@ -373,17 +373,17 @@ func newForecastCmd(rt *Runtime) *cobra.Command {
 				rows := make([]map[string]string, 0, len(out))
 				for _, d := range out {
 					rows = append(rows, map[string]string{
-						"date":          d.Date,
-						"min_c":         fmt.Sprintf("%.0f", d.MinTempC),
-						"max_c":         fmt.Sprintf("%.0f", d.MaxTempC),
-						"rain_chance":   fmt.Sprintf("%d", d.RainChancePct),
-						"sun_chance":    fmt.Sprintf("%d", d.SunChancePct),
-						"rain_min_mm":   fmt.Sprintf("%.1f", d.RainMinMm),
-						"rain_max_mm":   fmt.Sprintf("%.1f", d.RainMaxMm),
-						"wind_bft":      fmt.Sprintf("%d", d.WindBft),
-						"wind_dir":      d.WindDirection,
-						"condition":     d.Condition,
-						"description":   d.WeatherDescription,
+						"date":        d.Date,
+						"min_c":       fmt.Sprintf("%.0f", d.MinTempC),
+						"max_c":       fmt.Sprintf("%.0f", d.MaxTempC),
+						"rain_chance": fmt.Sprintf("%d", d.RainChancePct),
+						"sun_chance":  fmt.Sprintf("%d", d.SunChancePct),
+						"rain_min_mm": fmt.Sprintf("%.1f", d.RainMinMm),
+						"rain_max_mm": fmt.Sprintf("%.1f", d.RainMaxMm),
+						"wind_bft":    fmt.Sprintf("%d", d.WindBft),
+						"wind_dir":    d.WindDirection,
+						"condition":   d.Condition,
+						"description": d.WeatherDescription,
 					})
 				}
 				WritePlain(rt.Out, rows, []string{"date", "min_c", "max_c", "rain_chance", "sun_chance",
@@ -552,14 +552,14 @@ func newStationsCmd(rt *Runtime) *cobra.Command {
 				rows := make([]map[string]string, 0, len(out))
 				for _, s := range out {
 					rows = append(rows, map[string]string{
-						"id":          fmt.Sprintf("%d", s.StationID),
-						"name":        s.StationName,
-						"region":      s.Region,
-						"lat":         fmt.Sprintf("%.4f", s.Lat),
-						"lon":         fmt.Sprintf("%.4f", s.Lon),
-						"temp_c":      fmt.Sprintf("%.1f", s.TemperatureC),
-						"wind_ms":     fmt.Sprintf("%.1f", s.WindSpeedMS),
-						"condition":   s.Condition,
+						"id":        fmt.Sprintf("%d", s.StationID),
+						"name":      s.StationName,
+						"region":    s.Region,
+						"lat":       fmt.Sprintf("%.4f", s.Lat),
+						"lon":       fmt.Sprintf("%.4f", s.Lon),
+						"temp_c":    fmt.Sprintf("%.1f", s.TemperatureC),
+						"wind_ms":   fmt.Sprintf("%.1f", s.WindSpeedMS),
+						"condition": s.Condition,
 					})
 				}
 				WritePlain(rt.Out, rows, []string{"id", "name", "region", "lat", "lon", "temp_c", "wind_ms", "condition"})

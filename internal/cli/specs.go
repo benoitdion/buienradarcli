@@ -59,7 +59,7 @@ var CommandSpecs = []CommandSpec{
 		Summary: "Precipitation forecast (~48h, highest resolution near-term)",
 		Auth:    "none", Safety: "read",
 		Options: commonLocOpts,
-		Output:  "total_mm, will_rain, first_rain_time, partial_errors[], entries[{time, mm_per_h}]. " +
+		Output: "total_mm, will_rain, first_rain_time, partial_errors[], entries[{time, mm_per_h}]. " +
 			"Entries span ~48h: 5-min resolution near-term tapering to hourly further out.",
 	},
 	{
