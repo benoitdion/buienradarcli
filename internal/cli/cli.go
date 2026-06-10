@@ -235,7 +235,6 @@ func newForecastCmd(rt *Runtime) *cobra.Command {
 	return cmd
 }
 
-
 type rainEntry struct {
 	Time   string  `json:"time"`
 	MMPerH float64 `json:"mm_per_h"`
@@ -333,17 +332,17 @@ func rainBar(mmh float64) string {
 }
 
 type stationOut struct {
-	StationID    int     `json:"station_id"`
-	StationName  string  `json:"station_name"`
-	Region       string  `json:"region"`
-	Lat          float64 `json:"lat"`
-	Lon          float64 `json:"lon"`
-	Timestamp    string  `json:"timestamp"`
-	TemperatureC float64 `json:"temperature_c"`
-	HumidityPct  float64 `json:"humidity_pct"`
-	WindSpeedMS  float64 `json:"wind_speed_ms"`
-	WindDirection string `json:"wind_direction"`
-	Condition    string  `json:"condition"`
+	StationID     int     `json:"station_id"`
+	StationName   string  `json:"station_name"`
+	Region        string  `json:"region"`
+	Lat           float64 `json:"lat"`
+	Lon           float64 `json:"lon"`
+	Timestamp     string  `json:"timestamp"`
+	TemperatureC  float64 `json:"temperature_c"`
+	HumidityPct   float64 `json:"humidity_pct"`
+	WindSpeedMS   float64 `json:"wind_speed_ms"`
+	WindDirection string  `json:"wind_direction"`
+	Condition     string  `json:"condition"`
 }
 
 func newStationsCmd(rt *Runtime) *cobra.Command {
@@ -413,7 +412,6 @@ func newStationsCmd(rt *Runtime) *cobra.Command {
 	cmd.Flags().StringVar(&filter, "filter", "", "Substring filter on station name")
 	return cmd
 }
-
 
 func forecastEntryToPlain(e buienradar.ForecastEntry) map[string]string {
 	row := map[string]string{"time": e.Time}
