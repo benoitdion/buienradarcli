@@ -81,11 +81,9 @@ func Build(rt *Runtime) *cobra.Command {
 
 	root.AddCommand(newDescribeCmd(rt))
 	root.AddCommand(newAgentSkillCmd(rt))
-	root.AddCommand(newCurrentCmd(rt))
 	root.AddCommand(newForecastCmd(rt))
 	root.AddCommand(newRainCmd(rt))
 	root.AddCommand(newStationsCmd(rt))
-	root.AddCommand(newReportCmd(rt))
 
 	return root
 }
@@ -195,114 +193,40 @@ func newAgentSkillCmd(rt *Runtime) *cobra.Command {
 	}
 }
 
-type currentResult struct {
-	Lat                float64 `json:"lat"`
-	Lon                float64 `json:"lon"`
-	Station            string  `json:"station_name"`
-	StationID          int     `json:"station_id"`
-	Region             string  `json:"region"`
-	StationLat         float64 `json:"station_lat"`
-	StationLon         float64 `json:"station_lon"`
-	DistanceKM         float64 `json:"distance_km"`
-	Timestamp          string  `json:"timestamp"`
-	TemperatureC       float64 `json:"temperature_c"`
-	FeelsLikeC         float64 `json:"feels_like_c"`
-	GroundTempC        float64 `json:"ground_temperature_c"`
-	HumidityPct        float64 `json:"humidity_pct"`
-	WindSpeedMS        float64 `json:"wind_speed_ms"`
-	WindGustsMS        float64 `json:"wind_gusts_ms"`
-	WindBft            float64 `json:"wind_bft"`
-	WindDirection      string  `json:"wind_direction"`
-	WindDirectionDeg   float64 `json:"wind_direction_deg"`
-	AirPressureHpa     float64 `json:"air_pressure_hpa"`
-	VisibilityM        float64 `json:"visibility_m"`
-	PrecipitationMmH   float64 `json:"precipitation_mm_h"`
-	RainLastHourMm     float64 `json:"rain_last_hour_mm"`
-	RainLast24HourMm   float64 `json:"rain_last_24h_mm"`
-	SunPowerWm2        float64 `json:"sun_power_w_m2"`
-	Condition          string  `json:"condition"`
-	IconCode           string  `json:"icon_code"`
-	WeatherDescription string  `json:"weather_description"`
-}
-
-func newCurrentCmd(rt *Runtime) *cobra.Command {
+func newForecastCmd(rt *Runtime) *cobra.Command {
 	var lat, lon float64
 	cmd := &cobra.Command{
-		Use:   "current",
-		Short: "Current weather from the station nearest to (lat, lon)",
+		Use:   "forecast",
+		Short: "Merged weather forecast: live conditions, hourly outlook, 14-day ahead, pollen",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			mode, err := resolvedMode(cmd, rt)
 			if err != nil {
 				return err
 			}
-			feed, err := rt.Client.Feed(cmd.Context())
+			wf, err := rt.Client.MergedWeatherForecast(cmd.Context(), lat, lon)
 			if err != nil {
 				return err
 			}
-			st := buienradar.NearestStation(feed.Actual.StationMeasurements, lat, lon)
-			if st == nil {
-				return fmt.Errorf("no stations in feed")
-			}
-			res := currentResult{
-				Lat: lat, Lon: lon,
-				Station: st.StationName, StationID: st.StationID, Region: st.Regio,
-				StationLat: st.Lat, StationLon: st.Lon,
-				DistanceKM:         haversineKM(lat, lon, st.Lat, st.Lon),
-				Timestamp:          st.Timestamp,
-				TemperatureC:       st.Temperature,
-				FeelsLikeC:         st.FeelTemperature,
-				GroundTempC:        st.GroundTemperature,
-				HumidityPct:        st.Humidity,
-				WindSpeedMS:        st.WindSpeed,
-				WindGustsMS:        st.WindGusts,
-				WindBft:            st.WindSpeedBft,
-				WindDirection:      st.WindDirection,
-				WindDirectionDeg:   st.WindDirectionDeg,
-				AirPressureHpa:     st.AirPressure,
-				VisibilityM:        st.Visibility,
-				PrecipitationMmH:   st.Precipitation,
-				RainLastHourMm:     st.RainFallLastHour,
-				RainLast24HourMm:   st.RainFallLast24Hour,
-				SunPowerWm2:        st.SunPower,
-				Condition:          buienradar.Condition(buienradar.IconCode(st.IconURL)),
-				IconCode:           buienradar.IconCode(st.IconURL),
-				WeatherDescription: st.WeatherDescription,
-			}
-
 			switch mode {
 			case OutputJSON:
-				return WriteJSON(rt.Out, "current", res)
+				return WriteJSON(rt.Out, "forecast", wf)
 			case OutputPlain:
-				row := map[string]string{
-					"station":       res.Station,
-					"region":        res.Region,
-					"distance_km":   fmt.Sprintf("%.1f", res.DistanceKM),
-					"temperature_c": fmt.Sprintf("%.1f", res.TemperatureC),
-					"feels_like_c":  fmt.Sprintf("%.1f", res.FeelsLikeC),
-					"humidity_pct":  fmt.Sprintf("%.0f", res.HumidityPct),
-					"wind_ms":       fmt.Sprintf("%.1f", res.WindSpeedMS),
-					"wind_dir":      res.WindDirection,
-					"precip_mm_h":   fmt.Sprintf("%.2f", res.PrecipitationMmH),
-					"condition":     res.Condition,
-					"description":   res.WeatherDescription,
+				rows := make([]map[string]string, 0, len(wf.Entries))
+				for _, e := range wf.Entries {
+					row := forecastEntryToPlain(e)
+					rows = append(rows, row)
 				}
-				WritePlain(rt.Out, []map[string]string{row}, []string{
-					"station", "region", "distance_km", "temperature_c", "feels_like_c",
-					"humidity_pct", "wind_ms", "wind_dir", "precip_mm_h", "condition", "description",
-				})
+				plainKeys := []string{
+					"time", "station_name", "temp_c", "min_temp_c", "max_temp_c",
+					"feels_like_c", "wind_speed_ms", "wind_bft", "wind_direction",
+					"humidity_pct", "pressure_hpa", "precip_mm_h", "precip_mm",
+					"pollen_grass_pct", "pollen_tree_pct", "pollen_birch_pct", "pollen_weed_pct",
+					"condition",
+				}
+				WritePlain(rt.Out, rows, plainKeys)
 				return nil
 			default:
-				fmt.Fprintf(rt.Out, "%s (%s) — %.1f km from (%.4f, %.4f)\n",
-					res.Station, res.Region, res.DistanceKM, lat, lon)
-				fmt.Fprintf(rt.Out, "  %s, %s\n", res.WeatherDescription, res.Condition)
-				fmt.Fprintf(rt.Out, "  temp:    %.1f°C (feels %.1f°C)\n", res.TemperatureC, res.FeelsLikeC)
-				fmt.Fprintf(rt.Out, "  wind:    %.1f m/s %s (%.0f°)\n", res.WindSpeedMS, res.WindDirection, res.WindDirectionDeg)
-				fmt.Fprintf(rt.Out, "  humid:   %.0f%%\n", res.HumidityPct)
-				fmt.Fprintf(rt.Out, "  precip:  %.2f mm/h (%.1f mm last hour, %.1f mm last 24h)\n",
-					res.PrecipitationMmH, res.RainLastHourMm, res.RainLast24HourMm)
-				fmt.Fprintf(rt.Out, "  pressure:%.1f hPa\n", res.AirPressureHpa)
-				fmt.Fprintf(rt.Out, "  measured:%s\n", res.Timestamp)
-				return nil
+				return renderForecastText(rt.Out, wf)
 			}
 		},
 	}
@@ -311,97 +235,6 @@ func newCurrentCmd(rt *Runtime) *cobra.Command {
 	return cmd
 }
 
-type forecastDay struct {
-	Date               string  `json:"date"`
-	MinTempC           float64 `json:"min_temp_c"`
-	MaxTempC           float64 `json:"max_temp_c"`
-	RainChancePct      int     `json:"rain_chance_pct"`
-	SunChancePct       int     `json:"sun_chance_pct"`
-	RainMinMm          float64 `json:"rain_min_mm"`
-	RainMaxMm          float64 `json:"rain_max_mm"`
-	WindBft            int     `json:"wind_bft"`
-	WindDirection      string  `json:"wind_direction"`
-	Condition          string  `json:"condition"`
-	IconCode           string  `json:"icon_code"`
-	WeatherDescription string  `json:"weather_description"`
-}
-
-func newForecastCmd(rt *Runtime) *cobra.Command {
-	var days int
-	cmd := &cobra.Command{
-		Use:   "forecast",
-		Short: "Five-day national forecast",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			mode, err := resolvedMode(cmd, rt)
-			if err != nil {
-				return err
-			}
-			feed, err := rt.Client.Feed(cmd.Context())
-			if err != nil {
-				return err
-			}
-			n := days
-			if n <= 0 {
-				n = 5
-			}
-			if n > len(feed.Forecast.FiveDay) {
-				n = len(feed.Forecast.FiveDay)
-			}
-			out := make([]forecastDay, 0, n)
-			for i := 0; i < n; i++ {
-				d := feed.Forecast.FiveDay[i]
-				out = append(out, forecastDay{
-					Date:               strings.SplitN(d.Day, "T", 2)[0],
-					MinTempC:           parseFloatOr(d.MinTemperatureRaw, d.MinTemperature),
-					MaxTempC:           parseFloatOr(d.MaxTemperatureRaw, d.MaxTemperature),
-					RainChancePct:      d.RainChance,
-					SunChancePct:       d.SunChance,
-					RainMinMm:          d.MMRainMin,
-					RainMaxMm:          d.MMRainMax,
-					WindBft:            d.Wind,
-					WindDirection:      d.WindDirection,
-					Condition:          buienradar.Condition(buienradar.IconCode(d.IconURL)),
-					IconCode:           buienradar.IconCode(d.IconURL),
-					WeatherDescription: d.WeatherDescription,
-				})
-			}
-
-			switch mode {
-			case OutputJSON:
-				return WriteJSON(rt.Out, "forecast", out)
-			case OutputPlain:
-				rows := make([]map[string]string, 0, len(out))
-				for _, d := range out {
-					rows = append(rows, map[string]string{
-						"date":        d.Date,
-						"min_c":       fmt.Sprintf("%.0f", d.MinTempC),
-						"max_c":       fmt.Sprintf("%.0f", d.MaxTempC),
-						"rain_chance": fmt.Sprintf("%d", d.RainChancePct),
-						"sun_chance":  fmt.Sprintf("%d", d.SunChancePct),
-						"rain_min_mm": fmt.Sprintf("%.1f", d.RainMinMm),
-						"rain_max_mm": fmt.Sprintf("%.1f", d.RainMaxMm),
-						"wind_bft":    fmt.Sprintf("%d", d.WindBft),
-						"wind_dir":    d.WindDirection,
-						"condition":   d.Condition,
-						"description": d.WeatherDescription,
-					})
-				}
-				WritePlain(rt.Out, rows, []string{"date", "min_c", "max_c", "rain_chance", "sun_chance",
-					"rain_min_mm", "rain_max_mm", "wind_bft", "wind_dir", "condition", "description"})
-				return nil
-			default:
-				for _, d := range out {
-					fmt.Fprintf(rt.Out, "%s  %2.0f–%2.0f°C  rain %3d%% (%.1f–%.1f mm)  sun %3d%%  wind %d Bft %s  %s\n",
-						d.Date, d.MinTempC, d.MaxTempC, d.RainChancePct, d.RainMinMm, d.RainMaxMm,
-						d.SunChancePct, d.WindBft, d.WindDirection, d.Condition)
-				}
-				return nil
-			}
-		},
-	}
-	cmd.Flags().IntVar(&days, "days", 5, "Days to return (1-5)")
-	return cmd
-}
 
 type rainEntry struct {
 	Time   string  `json:"time"`
@@ -500,18 +333,17 @@ func rainBar(mmh float64) string {
 }
 
 type stationOut struct {
-	StationID          int     `json:"station_id"`
-	StationName        string  `json:"station_name"`
-	Region             string  `json:"region"`
-	Lat                float64 `json:"lat"`
-	Lon                float64 `json:"lon"`
-	Timestamp          string  `json:"timestamp"`
-	TemperatureC       float64 `json:"temperature_c"`
-	HumidityPct        float64 `json:"humidity_pct"`
-	WindSpeedMS        float64 `json:"wind_speed_ms"`
-	WindDirection      string  `json:"wind_direction"`
-	Condition          string  `json:"condition"`
-	WeatherDescription string  `json:"weather_description"`
+	StationID    int     `json:"station_id"`
+	StationName  string  `json:"station_name"`
+	Region       string  `json:"region"`
+	Lat          float64 `json:"lat"`
+	Lon          float64 `json:"lon"`
+	Timestamp    string  `json:"timestamp"`
+	TemperatureC float64 `json:"temperature_c"`
+	HumidityPct  float64 `json:"humidity_pct"`
+	WindSpeedMS  float64 `json:"wind_speed_ms"`
+	WindDirection string `json:"wind_direction"`
+	Condition    string  `json:"condition"`
 }
 
 func newStationsCmd(rt *Runtime) *cobra.Command {
@@ -524,23 +356,28 @@ func newStationsCmd(rt *Runtime) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			feed, err := rt.Client.Feed(cmd.Context())
+			stations, err := rt.Client.AllStations(cmd.Context())
 			if err != nil {
 				return err
 			}
 			needle := strings.ToLower(strings.TrimSpace(filter))
-			out := make([]stationOut, 0, len(feed.Actual.StationMeasurements))
-			for _, s := range feed.Actual.StationMeasurements {
+			out := make([]stationOut, 0, len(stations))
+			for _, s := range stations {
 				if needle != "" && !strings.Contains(strings.ToLower(s.StationName), needle) {
 					continue
 				}
 				out = append(out, stationOut{
-					StationID: s.StationID, StationName: s.StationName, Region: s.Regio,
-					Lat: s.Lat, Lon: s.Lon, Timestamp: s.Timestamp,
-					TemperatureC: s.Temperature, HumidityPct: s.Humidity,
-					WindSpeedMS: s.WindSpeed, WindDirection: s.WindDirection,
-					Condition:          buienradar.Condition(buienradar.IconCode(s.IconURL)),
-					WeatherDescription: s.WeatherDescription,
+					StationID:     s.StationID,
+					StationName:   s.StationName,
+					Region:        s.Regio,
+					Lat:           s.Lat,
+					Lon:           s.Lon,
+					Timestamp:     s.Timestamp,
+					TemperatureC:  s.Temperature,
+					HumidityPct:   s.Humidity,
+					WindSpeedMS:   s.WindSpeed,
+					WindDirection: s.WindDirection,
+					Condition:     buienradar.Condition(s.IconCode),
 				})
 			}
 			sort.Slice(out, func(i, j int) bool { return out[i].StationName < out[j].StationName })
@@ -577,96 +414,170 @@ func newStationsCmd(rt *Runtime) *cobra.Command {
 	return cmd
 }
 
-type reportResult struct {
-	Published string `json:"published"`
-	Title     string `json:"title"`
-	Summary   string `json:"summary"`
-	Author    string `json:"author"`
-	ShortTerm string `json:"short_term"`
-	LongTerm  string `json:"long_term"`
-}
 
-func newReportCmd(rt *Runtime) *cobra.Command {
-	return &cobra.Command{
-		Use:   "report",
-		Short: "Free-form Dutch weather report from KNMI meteorologists",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			mode, err := resolvedMode(cmd, rt)
-			if err != nil {
-				return err
-			}
-			feed, err := rt.Client.Feed(cmd.Context())
-			if err != nil {
-				return err
-			}
-			res := reportResult{
-				Published: feed.Forecast.WeatherReport.Published,
-				Title:     feed.Forecast.WeatherReport.Title,
-				Summary:   feed.Forecast.WeatherReport.Summary,
-				Author:    feed.Forecast.WeatherReport.Author,
-				ShortTerm: feed.Forecast.ShortTerm.Forecast,
-				LongTerm:  feed.Forecast.LongTerm.Forecast,
-			}
-			switch mode {
-			case OutputJSON:
-				return WriteJSON(rt.Out, "report", res)
-			case OutputPlain:
-				WritePlain(rt.Out, []map[string]string{{
-					"title":      res.Title,
-					"published":  res.Published,
-					"author":     res.Author,
-					"summary":    res.Summary,
-					"short_term": res.ShortTerm,
-					"long_term":  res.LongTerm,
-				}}, []string{"title", "published", "author", "summary", "short_term", "long_term"})
-				return nil
-			default:
-				fmt.Fprintf(rt.Out, "%s\n", res.Title)
-				if res.Author != "" {
-					fmt.Fprintf(rt.Out, "by %s — %s\n\n", res.Author, res.Published)
-				}
-				if res.Summary != "" {
-					fmt.Fprintf(rt.Out, "%s\n\n", res.Summary)
-				}
-				if res.ShortTerm != "" {
-					fmt.Fprintf(rt.Out, "Short term:\n%s\n\n", res.ShortTerm)
-				}
-				if res.LongTerm != "" {
-					fmt.Fprintf(rt.Out, "Long term:\n%s\n", res.LongTerm)
-				}
-				return nil
-			}
-		},
+func forecastEntryToPlain(e buienradar.ForecastEntry) map[string]string {
+	row := map[string]string{"time": e.Time}
+	if e.StationName != nil {
+		row["station_name"] = *e.StationName
 	}
-}
-
-func parseFloatOr(s string, fallback float64) float64 {
-	v, err := strconvParseFloat(s)
-	if err != nil {
-		return fallback
+	if e.TempC != nil {
+		row["temp_c"] = fmt.Sprintf("%.1f", *e.TempC)
 	}
-	return v
-}
-
-func strconvParseFloat(s string) (float64, error) {
-	if s == "" {
-		return 0, fmt.Errorf("empty")
+	if e.MinTempC != nil {
+		row["min_temp_c"] = fmt.Sprintf("%.1f", *e.MinTempC)
 	}
-	var v float64
-	_, err := fmt.Sscanf(s, "%f", &v)
-	return v, err
+	if e.MaxTempC != nil {
+		row["max_temp_c"] = fmt.Sprintf("%.1f", *e.MaxTempC)
+	}
+	if e.FeelsLikeC != nil {
+		row["feels_like_c"] = fmt.Sprintf("%.1f", *e.FeelsLikeC)
+	}
+	if e.WindSpeedMS != nil {
+		row["wind_speed_ms"] = fmt.Sprintf("%.1f", *e.WindSpeedMS)
+	}
+	if e.WindBft != nil {
+		row["wind_bft"] = fmt.Sprintf("%d", *e.WindBft)
+	}
+	if e.WindDirection != nil {
+		row["wind_direction"] = *e.WindDirection
+	}
+	if e.HumidityPct != nil {
+		row["humidity_pct"] = fmt.Sprintf("%.0f", *e.HumidityPct)
+	}
+	if e.PressureHpa != nil {
+		row["pressure_hpa"] = fmt.Sprintf("%.1f", *e.PressureHpa)
+	}
+	if e.PrecipMmH != nil {
+		row["precip_mm_h"] = fmt.Sprintf("%.3f", *e.PrecipMmH)
+	}
+	if e.PrecipMm != nil {
+		row["precip_mm"] = fmt.Sprintf("%.1f", *e.PrecipMm)
+	}
+	if e.PollenGrassPct != nil {
+		row["pollen_grass_pct"] = fmt.Sprintf("%.0f", *e.PollenGrassPct)
+	}
+	if e.PollenTreePct != nil {
+		row["pollen_tree_pct"] = fmt.Sprintf("%.0f", *e.PollenTreePct)
+	}
+	if e.PollenBirchPct != nil {
+		row["pollen_birch_pct"] = fmt.Sprintf("%.0f", *e.PollenBirchPct)
+	}
+	if e.PollenWeedPct != nil {
+		row["pollen_weed_pct"] = fmt.Sprintf("%.0f", *e.PollenWeedPct)
+	}
+	if e.Condition != nil {
+		row["condition"] = *e.Condition
+	}
+	return row
 }
 
-// haversineKM computes the great-circle distance between two points in km.
-func haversineKM(lat1, lon1, lat2, lon2 float64) float64 {
-	const r = 6371.0
-	toRad := func(d float64) float64 { return d * math.Pi / 180 }
-	dLat := toRad(lat2 - lat1)
-	dLon := toRad(lon2 - lon1)
-	a := math.Sin(dLat/2)*math.Sin(dLat/2) +
-		math.Cos(toRad(lat1))*math.Cos(toRad(lat2))*math.Sin(dLon/2)*math.Sin(dLon/2)
-	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
-	return r * c
+func renderForecastText(w io.Writer, wf *buienradar.WeatherForecast) error {
+	if len(wf.PartialErrors) > 0 {
+		fmt.Fprintf(w, "warning: some sources failed: %s\n\n", strings.Join(wf.PartialErrors, ", "))
+	}
+	for _, e := range wf.Entries {
+		if e.StationName != nil {
+			// Live observation entry — richer single-line summary.
+			dist := ""
+			if e.DistanceKM != nil {
+				dist = fmt.Sprintf(" (%.1f km)", *e.DistanceKM)
+			}
+			cond := ""
+			if e.Condition != nil {
+				cond = "  " + *e.Condition
+			}
+			fmt.Fprintf(w, "%s  %s%s%s\n", e.Time, *e.StationName, dist, cond)
+			if e.TempC != nil {
+				feels := ""
+				if e.FeelsLikeC != nil {
+					feels = fmt.Sprintf(" (feels %.1f°C)", *e.FeelsLikeC)
+				}
+				fmt.Fprintf(w, "  temp:    %.1f°C%s\n", *e.TempC, feels)
+			}
+			if e.WindSpeedMS != nil {
+				dir := ""
+				if e.WindDirection != nil {
+					dir = " " + *e.WindDirection
+				}
+				gusts := ""
+				if e.WindGustsMS != nil {
+					gusts = fmt.Sprintf(", gusts %.1f m/s", *e.WindGustsMS)
+				}
+				fmt.Fprintf(w, "  wind:    %.1f m/s%s%s\n", *e.WindSpeedMS, dir, gusts)
+			}
+			if e.HumidityPct != nil {
+				fmt.Fprintf(w, "  humid:   %.0f%%\n", *e.HumidityPct)
+			}
+			if e.PressureHpa != nil {
+				fmt.Fprintf(w, "  pressure:%.1f hPa\n", *e.PressureHpa)
+			}
+			if e.VisibilityM != nil {
+				fmt.Fprintf(w, "  visibility:%.0f m\n", *e.VisibilityM)
+			}
+			if e.PrecipMmH != nil {
+				extra := ""
+				if e.RainLastHourMm != nil {
+					extra += fmt.Sprintf("  last hour: %.1f mm", *e.RainLastHourMm)
+				}
+				if e.Rain24hMm != nil {
+					extra += fmt.Sprintf("  last 24h: %.1f mm", *e.Rain24hMm)
+				}
+				fmt.Fprintf(w, "  precip:  %.2f mm/h%s\n", *e.PrecipMmH, extra)
+			}
+			if e.SunPowerWm2 != nil {
+				fmt.Fprintf(w, "  sun:     %.0f W/m²\n", *e.SunPowerWm2)
+			}
+			if e.PollenGrassPct != nil || e.PollenTreePct != nil {
+				fmt.Fprint(w, "  pollen: ")
+				if e.PollenGrassPct != nil {
+					fmt.Fprintf(w, " grass %.0f%%", *e.PollenGrassPct)
+				}
+				if e.PollenTreePct != nil {
+					fmt.Fprintf(w, " tree %.0f%%", *e.PollenTreePct)
+				}
+				if e.PollenBirchPct != nil {
+					fmt.Fprintf(w, " birch %.0f%%", *e.PollenBirchPct)
+				}
+				if e.PollenWeedPct != nil {
+					fmt.Fprintf(w, " weed %.0f%%", *e.PollenWeedPct)
+				}
+				fmt.Fprintln(w)
+			}
+			fmt.Fprintln(w)
+			continue
+		}
+
+		// Time-series entries — compact one-liners.
+		line := fmt.Sprintf("  %-19s", e.Time)
+		if e.TempC != nil {
+			line += fmt.Sprintf("  %5.1f°C", *e.TempC)
+		} else if e.MinTempC != nil && e.MaxTempC != nil {
+			line += fmt.Sprintf("  %4.0f–%4.0f°C", *e.MinTempC, *e.MaxTempC)
+		}
+		if e.PrecipMmH != nil {
+			line += fmt.Sprintf("  %5.2f mm/h", *e.PrecipMmH)
+		} else if e.PrecipMm != nil {
+			line += fmt.Sprintf("  %4.1f mm", *e.PrecipMm)
+		}
+		if e.WindSpeedMS != nil {
+			dir := ""
+			if e.WindDirection != nil {
+				dir = " " + *e.WindDirection
+			}
+			line += fmt.Sprintf("  %.1f m/s%s", *e.WindSpeedMS, dir)
+		}
+		if e.Condition != nil {
+			line += "  " + *e.Condition
+		}
+		if e.PollenGrassPct != nil {
+			line += fmt.Sprintf("  pollen g%.0f", *e.PollenGrassPct)
+			if e.PollenTreePct != nil {
+				line += fmt.Sprintf("/t%.0f", *e.PollenTreePct)
+			}
+		}
+		fmt.Fprintln(w, line)
+	}
+	return nil
 }
 
 // Execute runs the CLI with a context and writes any error envelope.

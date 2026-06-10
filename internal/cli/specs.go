@@ -37,22 +37,17 @@ var CommandSpecs = []CommandSpec{
 		Output: "Command spec (path, options, output description).",
 	},
 	{
-		Path:    []string{"current"},
-		Summary: "Current weather from the station nearest to (lat, lon)",
+		Path:    []string{"forecast"},
+		Summary: "Merged weather forecast: live conditions, hourly outlook, 14-day ahead, pollen",
 		Auth:    "none", Safety: "read",
 		Options: commonLocOpts,
-		Output:  "Station measurement with temperature, humidity, wind, condition.",
-		Description: "Buienradar's KNMI-fed station network covers the Netherlands. " +
-			"Coordinates outside NL will still match the nearest available station.",
-	},
-	{
-		Path:    []string{"forecast"},
-		Summary: "Five-day forecast (national, not location-specific)",
-		Auth:    "none", Safety: "read",
-		Options: []SpecOption{
-			{Name: "days", Type: "number", Default: "5", Description: "Days to return (1-5)"},
-		},
-		Output: "Per-day min/max temps, rain chance, sun chance, wind, condition.",
+		Output: "Flat entries[] timeline. First entry: live station observation (temp, wind, humidity, " +
+			"pressure, precip, pollen, condition). Subsequent near-term entries: 5-min rain+pollen, " +
+			"hourly temperature. Further out: daily min/max temp, precip, wind, condition (up to 14 days). " +
+			"All fields are absent when not available for that entry.",
+		Description: "Blends observations.buienradar.nl (live), graphdata (rain/pollen/temp), " +
+			"and forecast.buienradar.nl (14-day). partial_errors[] lists any sources that failed; " +
+			"remaining sources still contribute.",
 	},
 	{
 		Path:    []string{"rain"},
@@ -70,12 +65,6 @@ var CommandSpecs = []CommandSpec{
 			{Name: "filter", Type: "string", Description: "Substring match on station name (case-insensitive)"},
 		},
 		Output: "Station id, name, lat, lon, temperature, condition.",
-	},
-	{
-		Path:    []string{"report"},
-		Summary: "Free-form weather report (Dutch text from KNMI meteorologists)",
-		Auth:    "none", Safety: "read",
-		Output: "Title, summary, short-term and long-term outlook strings, in Dutch.",
 	},
 }
 

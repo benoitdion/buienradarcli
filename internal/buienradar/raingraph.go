@@ -12,6 +12,11 @@ const (
 	GraphRainHistoryForecast = "https://graphdata.buienradar.nl/3.0/forecast/geo/RainHistoryForecast"
 	GraphRain8Hour           = "https://graphdata.buienradar.nl/3.0/forecast/geo/Rain8Hour"
 	GraphRain24Hour          = "https://graphdata.buienradar.nl/3.0/forecast/geo/Rain24Hour"
+	GraphTemp24Hour          = "https://graphdata.buienradar.nl/3.0/forecast/geo/Temp24Hour"
+	GraphPollenGrass         = "https://graphdata.buienradar.nl/3.0/forecast/geo/PollenGrass"
+	GraphPollenTree          = "https://graphdata.buienradar.nl/3.0/forecast/geo/PollenTree"
+	GraphPollenBirch         = "https://graphdata.buienradar.nl/3.0/forecast/geo/PollenBirch"
+	GraphPollenWeed          = "https://graphdata.buienradar.nl/3.0/forecast/geo/PollenWeed"
 )
 
 type GraphForecast struct {
