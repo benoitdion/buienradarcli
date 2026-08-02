@@ -13,13 +13,19 @@ import (
 	"time"
 )
 
-const KeyScrapeURL = "https://www.buienradar.nl/nederland/neerslag/neerslagkaart"
+const KeyScrapeURL = "https://www.buienradar.nl/nederland/neerslag/buienradar/"
 
 var apiKeyRE = regexp.MustCompile(`window\.apiKey\s*=\s*['"]([0-9a-f-]{36})['"]`)
 
 type cachedKey struct {
 	Key       string    `json:"key"`
 	FetchedAt time.Time `json:"fetched_at"`
+}
+
+type keyRefresh struct {
+	done chan struct{}
+	key  string
+	err  error
 }
 
 // KeyManager manages the graphdata.buienradar.nl API key. On first use it
@@ -35,9 +41,10 @@ type KeyManager struct {
 	HTTP      *http.Client
 	UA        string
 
-	mu        sync.Mutex
-	active    string // in-memory current key; empty means "load from disk or scrape"
-	refreshMu sync.Mutex
+	mu       sync.Mutex
+	active   string // in-memory current key; empty means "load from disk or scrape"
+	flightMu sync.Mutex
+	inflight *keyRefresh
 }
 
 // NewKeyManager constructs a KeyManager backed by the user's OS cache dir.
@@ -81,24 +88,45 @@ func (km *KeyManager) Ensure(ctx context.Context) (string, error) {
 	if key := km.Key(); key != "" {
 		return key, nil
 	}
-
-	km.refreshMu.Lock()
-	defer km.refreshMu.Unlock()
-	if key := km.Key(); key != "" {
-		return key, nil
-	}
-	return km.refresh(ctx)
+	return km.refreshShared(ctx, "", false)
 }
 
 // Refresh replaces a rejected key. If another caller already replaced that
 // key, the newer value is reused instead of scraping again.
 func (km *KeyManager) Refresh(ctx context.Context, rejectedKey string) (string, error) {
-	km.refreshMu.Lock()
-	defer km.refreshMu.Unlock()
 	if key := km.Key(); key != "" && key != rejectedKey {
 		return key, nil
 	}
-	return km.refresh(ctx)
+	return km.refreshShared(ctx, rejectedKey, true)
+}
+
+func (km *KeyManager) refreshShared(ctx context.Context, rejectedKey string, requireReplacement bool) (string, error) {
+	km.flightMu.Lock()
+	if key := km.Key(); key != "" && (!requireReplacement || key != rejectedKey) {
+		km.flightMu.Unlock()
+		return key, nil
+	}
+	if flight := km.inflight; flight != nil {
+		km.flightMu.Unlock()
+		select {
+		case <-flight.done:
+			return flight.key, flight.err
+		case <-ctx.Done():
+			return "", ctx.Err()
+		}
+	}
+
+	flight := &keyRefresh{done: make(chan struct{})}
+	km.inflight = flight
+	km.flightMu.Unlock()
+
+	flight.key, flight.err = km.refresh(ctx)
+
+	km.flightMu.Lock()
+	km.inflight = nil
+	close(flight.done)
+	km.flightMu.Unlock()
+	return flight.key, flight.err
 }
 
 func (km *KeyManager) refresh(ctx context.Context) (string, error) {

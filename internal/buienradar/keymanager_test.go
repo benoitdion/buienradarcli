@@ -12,6 +12,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/benoitdion/buienradarcli/internal/buienradar"
 )
@@ -248,6 +249,67 @@ func TestKeyManager_EnsureCoalescesConcurrentRefreshes(t *testing.T) {
 	}
 	if got := scrapeCount.Load(); got != 1 {
 		t.Fatalf("scrape count = %d, want 1", got)
+	}
+}
+
+func TestKeyManager_EnsureSharesConcurrentRefreshFailure(t *testing.T) {
+	var scrapeCount atomic.Int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if scrapeCount.Add(1) == 1 {
+			close(started)
+		}
+		<-release
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	km := &buienradar.KeyManager{
+		ScrapeURL: srv.URL,
+		StorePath: filepath.Join(t.TempDir(), "api_key.json"),
+		HTTP:      srv.Client(),
+		UA:        "test",
+	}
+
+	const callers = 8
+	start := make(chan struct{})
+	errs := make(chan error, callers)
+	var ready sync.WaitGroup
+	var wg sync.WaitGroup
+	ready.Add(callers)
+	for range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ready.Done()
+			<-start
+			_, err := km.Ensure(context.Background())
+			errs <- err
+		}()
+	}
+
+	ready.Wait()
+	close(start)
+	<-started
+	time.Sleep(25 * time.Millisecond)
+	close(release)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err == nil || !strings.Contains(err.Error(), "status 503") {
+			t.Fatalf("Ensure error = %v, want shared status 503 failure", err)
+		}
+	}
+	if got := scrapeCount.Load(); got != 1 {
+		t.Fatalf("scrape count = %d, want 1 shared failed attempt", got)
+	}
+
+	if _, err := km.Ensure(context.Background()); err == nil {
+		t.Fatal("later Ensure succeeded, want a new failed attempt")
+	}
+	if got := scrapeCount.Load(); got != 2 {
+		t.Fatalf("scrape count after later retry = %d, want 2", got)
 	}
 }
 

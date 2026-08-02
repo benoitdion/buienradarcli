@@ -79,3 +79,18 @@ Operating recommendations baked into the skill:
 - Use `--list` and `describe <path>` for discovery before guessing arguments.
 - Translate Dutch source text into the user's language unless
   asked otherwise.
+
+## Live smoke test
+
+Run the opt-in end-to-end smoke test whenever you want to confirm that the
+Buienradar integration still works:
+
+```bash
+./scripts/smoke-test.sh
+```
+
+The test builds the CLI, starts with an isolated temporary cache to force a
+fresh API-key extraction, calls all three live rain graph horizons, and checks
+that the key was cached and accepted. It never prints the key and removes the
+temporary cache afterward. Because it uses the real Buienradar services, it is
+kept separate from the regular offline test suite.
