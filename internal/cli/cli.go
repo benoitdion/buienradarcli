@@ -76,7 +76,7 @@ func Build(rt *Runtime) *cobra.Command {
 		},
 	}
 	root.PersistentFlags().StringVarP(&outputRaw, "output", "o", "", "Output mode: json|plain|text")
-	root.PersistentFlags().StringVar(&apiKey, "api-key", "", "API key for graphdata endpoints (default: built-in public key; env BUIENRADAR_API_KEY)")
+	root.PersistentFlags().StringVar(&apiKey, "api-key", "", "API key for graphdata endpoints (default: auto-discovered; env BUIENRADAR_API_KEY)")
 	root.Flags().BoolVar(&listTop, "list", false, "List top-level capabilities")
 
 	root.AddCommand(newDescribeCmd(rt))
@@ -203,6 +203,9 @@ func newForecastCmd(rt *Runtime) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := validateCoordinates(lat, lon); err != nil {
+				return err
+			}
 			wf, err := rt.Client.MergedWeatherForecast(cmd.Context(), lat, lon)
 			if err != nil {
 				return err
@@ -260,12 +263,25 @@ func newRainCmd(rt *Runtime) *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if err := validateCoordinates(lat, lon); err != nil {
+				return err
+			}
 			return runRainMerged(cmd.Context(), rt, lat, lon, mode)
 		},
 	}
 	cmd.Flags().Float64Var(&lat, "lat", DefaultLat, "Latitude")
 	cmd.Flags().Float64Var(&lon, "lon", DefaultLon, "Longitude")
 	return cmd
+}
+
+func validateCoordinates(lat, lon float64) error {
+	if math.IsNaN(lat) || math.IsInf(lat, 0) || lat < -90 || lat > 90 {
+		return fmt.Errorf("latitude must be a finite number between -90 and 90")
+	}
+	if math.IsNaN(lon) || math.IsInf(lon, 0) || lon < -180 || lon > 180 {
+		return fmt.Errorf("longitude must be a finite number between -180 and 180")
+	}
+	return nil
 }
 
 func runRainMerged(ctx context.Context, rt *Runtime, lat, lon float64, mode OutputMode) error {

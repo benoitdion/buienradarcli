@@ -25,22 +25,17 @@ Run with ` + "`go run github.com/benoitdion/buienradarcli@main`" + ` unless othe
 ` + "```bash" + `
 buienradarcli --list
 buienradarcli describe rain --output json
-buienradarcli describe current --output json
+buienradarcli describe forecast --output json
 ` + "```" + `
 
 ## Commands
 
-- Current weather at a location:
-  ` + "`buienradarcli current --lat 52.37 --lon 4.90 --output json`" + `
-- Five-day national forecast:
-  ` + "`buienradarcli forecast --output json`" + `
+- Live conditions plus hourly, rain, pollen, and 14-day forecasts:
+  ` + "`buienradarcli forecast --lat 52.37 --lon 4.90 --output json`" + `
 - Precipitation forecast:
   ` + "`buienradarcli rain --lat 52.37 --lon 4.90 --output json`" + `
 - All weather stations with measurements:
   ` + "`buienradarcli stations --output json`" + `
-- Free-form weather report from KNMI:
-  ` + "`buienradarcli report --output json`" + `
-
 ## Coordinates
 
 - ` + "`--lat`" + ` / ` + "`--lon`" + ` default to Amsterdam (52.3676, 4.9041) when omitted.

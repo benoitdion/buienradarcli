@@ -1,6 +1,7 @@
 package buienradar
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -34,8 +35,9 @@ type KeyManager struct {
 	HTTP      *http.Client
 	UA        string
 
-	mu     sync.Mutex
-	active string // in-memory current key; empty means "load from disk or scrape"
+	mu        sync.Mutex
+	active    string // in-memory current key; empty means "load from disk or scrape"
+	refreshMu sync.Mutex
 }
 
 // NewKeyManager constructs a KeyManager backed by the user's OS cache dir.
@@ -57,8 +59,8 @@ func (km *KeyManager) Override(key string) {
 	km.active = key
 }
 
-// Key returns the current best key: explicit override > disk cache > "" (triggers
-// a 401 on first use, which causes RainGraph to auto-scrape and retry).
+// Key returns the current best key: explicit override, disk cache, or an empty
+// string when neither is available.
 func (km *KeyManager) Key() string {
 	km.mu.Lock()
 	defer km.mu.Unlock()
@@ -73,10 +75,34 @@ func (km *KeyManager) Key() string {
 	return ""
 }
 
-// Refresh scrapes a fresh key from the buienradar website, stores it on disk,
-// and updates the in-memory key. Called automatically on 401/403.
-func (km *KeyManager) Refresh() (string, error) {
-	key, err := km.scrape()
+// Ensure returns the current key or discovers one when the cache is empty.
+// Concurrent callers share the same refresh.
+func (km *KeyManager) Ensure(ctx context.Context) (string, error) {
+	if key := km.Key(); key != "" {
+		return key, nil
+	}
+
+	km.refreshMu.Lock()
+	defer km.refreshMu.Unlock()
+	if key := km.Key(); key != "" {
+		return key, nil
+	}
+	return km.refresh(ctx)
+}
+
+// Refresh replaces a rejected key. If another caller already replaced that
+// key, the newer value is reused instead of scraping again.
+func (km *KeyManager) Refresh(ctx context.Context, rejectedKey string) (string, error) {
+	km.refreshMu.Lock()
+	defer km.refreshMu.Unlock()
+	if key := km.Key(); key != "" && key != rejectedKey {
+		return key, nil
+	}
+	return km.refresh(ctx)
+}
+
+func (km *KeyManager) refresh(ctx context.Context) (string, error) {
+	key, err := km.scrape(ctx)
 	if err != nil {
 		return "", fmt.Errorf("key refresh failed: %w", err)
 	}
@@ -89,8 +115,8 @@ func (km *KeyManager) Refresh() (string, error) {
 	return key, nil
 }
 
-func (km *KeyManager) scrape() (string, error) {
-	req, err := http.NewRequest(http.MethodGet, km.ScrapeURL, nil)
+func (km *KeyManager) scrape(ctx context.Context) (string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, km.ScrapeURL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -102,8 +128,11 @@ func (km *KeyManager) scrape() (string, error) {
 		return "", fmt.Errorf("fetch key page: %w", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode/100 != 2 {
+		return "", fmt.Errorf("status %d from %s", resp.StatusCode, km.ScrapeURL)
+	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
 	if err != nil {
 		return "", fmt.Errorf("read key page: %w", err)
 	}
@@ -140,11 +169,13 @@ func (km *KeyManager) storeDisk(key string) error {
 		return err
 	}
 	tmp := f.Name()
+	defer os.Remove(tmp)
 	if err := json.NewEncoder(f).Encode(cachedKey{Key: key, FetchedAt: time.Now()}); err != nil {
-		f.Close()
-		os.Remove(tmp)
+		_ = f.Close()
 		return err
 	}
-	f.Close()
+	if err := f.Close(); err != nil {
+		return err
+	}
 	return os.Rename(tmp, km.StorePath)
 }

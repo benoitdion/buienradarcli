@@ -33,7 +33,7 @@ type Client struct {
 
 func NewClient() *Client {
 	httpClient := &http.Client{Timeout: 15 * time.Second}
-	ua := "buienradarcli/0.1 (+https://github.com/benoitdion/buienradarcli)"
+	ua := "buienradarcli (+https://github.com/benoitdion/buienradarcli)"
 	return &Client{
 		HTTP:    httpClient,
 		BaseURL: FeedURL,
