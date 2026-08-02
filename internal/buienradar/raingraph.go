@@ -44,13 +44,11 @@ type GraphForecastEntry struct {
 //     is stored for future runs even when the API doesn't yet enforce it.
 //   - On auth failure (401/403) it re-scrapes and retries once.
 func (c *Client) RainGraph(ctx context.Context, endpoint string, lat, lon float64) (*GraphForecast, error) {
-	key := c.Keys.Key()
-	if key == "" {
+	key, keyErr := c.Keys.Ensure(ctx)
+	if keyErr != nil {
 		// No key on disk yet — scrape proactively so it's cached going forward.
 		// If scraping fails we proceed with an empty key (API may not enforce it).
-		if fresh, err := c.Keys.Refresh(); err == nil {
-			key = fresh
-		}
+		key = ""
 	}
 
 	result, err := c.rainGraphOnce(ctx, endpoint, lat, lon, key)
@@ -62,7 +60,7 @@ func (c *Client) RainGraph(ctx context.Context, endpoint string, lat, lon float6
 	}
 
 	// Key was rejected — scrape a fresh one and retry.
-	freshKey, refreshErr := c.Keys.Refresh()
+	freshKey, refreshErr := c.Keys.Refresh(ctx, key)
 	if refreshErr != nil {
 		return nil, fmt.Errorf("api key refresh: %w (original error: %w)", refreshErr, err)
 	}

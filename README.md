@@ -17,11 +17,9 @@ go build -o buienradarcli .
 ## Quickstart
 
 ```bash
-buienradarcli current --lat 52.37 --lon 4.90
-buienradarcli rain    --lat 52.37 --lon 4.90
-buienradarcli forecast
+buienradarcli forecast --lat 52.37 --lon 4.90
+buienradarcli rain     --lat 52.37 --lon 4.90
 buienradarcli stations --filter Schiphol
-buienradarcli report
 ```
 
 ## Discovery
@@ -29,7 +27,7 @@ buienradarcli report
 ```bash
 buienradarcli --list
 buienradarcli describe rain --output json
-buienradarcli describe current --output json
+buienradarcli describe forecast --output json
 ```
 
 `--list` shows top-level commands. `describe <path>` returns the full spec
@@ -46,18 +44,17 @@ When stdout is not a TTY, the CLI defaults to JSON.
 
 ## Commands
 
-| Command       | What it returns                                                     |
-| ------------- | ------------------------------------------------------------------- |
-| `current`     | Current measurements at the station nearest to `--lat`/`--lon`.     |
-| `forecast`    | Five-day national forecast (min/max temp, rain%, sun%, wind, etc.). |
-| `rain`        | Current rain forecast                                               |
-| `stations`    | All KNMI stations with their latest measurements.                   |
-| `report`      | Free-form Dutch weather report from KNMI meteorologists.            |
-| `describe`    | Spec for a command path.                                            |
+| Command       | What it returns                                                   |
+| ------------- | ----------------------------------------------------------------- |
+| `forecast`    | Merged live, hourly, rain, pollen, and 14-day forecast.            |
+| `rain`        | Precipitation forecast, with the highest resolution near-term.     |
+| `stations`    | All KNMI stations with their latest measurements.                  |
+| `describe`    | Spec for a command path.                                           |
 | `agent-skill` | Prints the agent SKILL.md for installation under `~/.agents`.       |
 
 `--lat` and `--lon` default to Amsterdam (52.3676, 4.9041) when omitted.
-
+The graph-data API key is discovered automatically and cached in the user cache
+directory. Set `BUIENRADAR_API_KEY` or pass `--api-key` to override it.
 
 ## Conditions
 
@@ -69,12 +66,16 @@ code are preserved alongside.
 
 ## For agents
 
-Run `buienradarcli agent-skill > ~/.agents/skills/buienradarcli/SKILL.md` to
-install a skill describing how to drive this CLI.
+Run the following to install a skill describing how to drive this CLI:
+
+```bash
+mkdir -p ~/.agents/skills/buienradarcli
+buienradarcli agent-skill > ~/.agents/skills/buienradarcli/SKILL.md
+```
 
 Operating recommendations baked into the skill:
 
 - Always pass `--output json` and parse the envelope, never the text output.
 - Use `--list` and `describe <path>` for discovery before guessing arguments.
-- Translate Dutch descriptions/report text into the user's language unless
+- Translate Dutch source text into the user's language unless
   asked otherwise.

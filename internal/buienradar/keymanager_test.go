@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/benoitdion/buienradarcli/internal/buienradar"
@@ -182,7 +184,7 @@ func TestKeyManager_Refresh_ScrapesAndStores(t *testing.T) {
 		UA:        "test",
 	}
 
-	got, err := km.Refresh()
+	got, err := km.Refresh(context.Background(), "")
 	if err != nil {
 		t.Fatalf("Refresh failed: %v", err)
 	}
@@ -197,5 +199,75 @@ func TestKeyManager_Refresh_ScrapesAndStores(t *testing.T) {
 	raw, _ := os.ReadFile(storePath)
 	if !strings.Contains(string(raw), realKey) {
 		t.Errorf("key not found in stored file: %s", raw)
+	}
+}
+
+func TestKeyManager_EnsureCoalescesConcurrentRefreshes(t *testing.T) {
+	var scrapeCount atomic.Int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if scrapeCount.Add(1) == 1 {
+			close(started)
+		}
+		<-release
+		fmt.Fprint(w, scrapeHTML(realKey))
+	}))
+	defer srv.Close()
+
+	km := &buienradar.KeyManager{
+		ScrapeURL: srv.URL,
+		StorePath: filepath.Join(t.TempDir(), "api_key.json"),
+		HTTP:      srv.Client(),
+		UA:        "test",
+	}
+
+	const callers = 8
+	errs := make(chan error, callers)
+	var wg sync.WaitGroup
+	for range callers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			key, err := km.Ensure(context.Background())
+			if err == nil && key != realKey {
+				err = fmt.Errorf("Ensure returned %q, want %q", key, realKey)
+			}
+			errs <- err
+		}()
+	}
+
+	<-started
+	close(release)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := scrapeCount.Load(); got != 1 {
+		t.Fatalf("scrape count = %d, want 1", got)
+	}
+}
+
+func TestKeyManager_EnsureHonorsContextCancellation(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	km := &buienradar.KeyManager{
+		ScrapeURL: srv.URL,
+		StorePath: filepath.Join(t.TempDir(), "api_key.json"),
+		HTTP:      srv.Client(),
+		UA:        "test",
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := km.Ensure(ctx)
+	if err == nil || !strings.Contains(err.Error(), context.Canceled.Error()) {
+		t.Fatalf("Ensure error = %v, want context cancellation", err)
 	}
 }
