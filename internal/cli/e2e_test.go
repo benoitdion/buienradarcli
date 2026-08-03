@@ -32,7 +32,23 @@ type smokeRainResult struct {
 	} `json:"entries"`
 }
 
-func TestCLIColdStartKeyExtraction(t *testing.T) {
+type smokeForecastResult struct {
+	PartialErrors []string `json:"partial_errors"`
+	Entries       []struct {
+		Time           string   `json:"time"`
+		StationName    *string  `json:"station_name"`
+		TempC          *float64 `json:"temp_c"`
+		MinTempC       *float64 `json:"min_temp_c"`
+		MaxTempC       *float64 `json:"max_temp_c"`
+		PrecipMmH      *float64 `json:"precip_mm_h"`
+		PollenGrassPct *float64 `json:"pollen_grass_pct"`
+		PollenTreePct  *float64 `json:"pollen_tree_pct"`
+		PollenBirchPct *float64 `json:"pollen_birch_pct"`
+		PollenWeedPct  *float64 `json:"pollen_weed_pct"`
+	} `json:"entries"`
+}
+
+func TestCLIEndToEnd(t *testing.T) {
 	repoRoot := repositoryRoot(t)
 	smokeRoot := t.TempDir()
 	binary := filepath.Join(smokeRoot, "buienradarcli")
@@ -54,22 +70,34 @@ func TestCLIColdStartKeyExtraction(t *testing.T) {
 
 	lat := envOrDefault("BUIENRADAR_SMOKE_LAT", "52.3676")
 	lon := envOrDefault("BUIENRADAR_SMOKE_LON", "4.9041")
-	command := exec.CommandContext(t.Context(), binary,
+	env := smokeEnvironment(home, cache)
+	rainOutput := runSmokeCommand(t, env, binary,
 		"rain", "--lat", lat, "--lon", lon, "--output", "json",
 	)
-	command.Env = smokeEnvironment(home, cache)
-	output, err := command.Output()
-	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
-			t.Fatalf("run live rain forecast: %v\n%s", err, exitErr.Stderr)
-		}
-		t.Fatalf("run live rain forecast: %v", err)
-	}
-
-	verifyRainOutput(t, output)
+	verifyRainOutput(t, rainOutput)
 	verifyExtractedKey(t, smokeRoot)
-	t.Log("PASS: fresh key extracted, cached privately, and accepted by all rain graph endpoints")
+
+	forecastOutput := runSmokeCommand(t, env, binary,
+		"forecast", "--lat", lat, "--lon", lon, "--output", "json",
+	)
+	verifyForecastOutput(t, forecastOutput)
+	t.Log("PASS: key extraction, rain graphs, and complete forecast temperature coverage")
+}
+
+func runSmokeCommand(t *testing.T, env []string, binary string, args ...string) []byte {
+	t.Helper()
+	command := exec.CommandContext(t.Context(), binary, args...)
+	command.Env = env
+	output, err := command.Output()
+	if err == nil {
+		return output
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		t.Fatalf("run %s: %v\n%s", strings.Join(args, " "), err, exitErr.Stderr)
+	}
+	t.Fatalf("run %s: %v", strings.Join(args, " "), err)
+	return nil
 }
 
 func repositoryRoot(t *testing.T) string {
@@ -118,10 +146,77 @@ func verifyRainOutput(t *testing.T, output []byte) {
 		if entry.Time == "" {
 			t.Fatalf("rain entry %d has no timestamp", i)
 		}
-		if entry.MMPerH < 0 || math.IsNaN(entry.MMPerH) || math.IsInf(entry.MMPerH, 0) {
+		if entry.MMPerH < 0 || invalidNumber(entry.MMPerH) {
 			t.Fatalf("rain entry %d has invalid precipitation value %v", i, entry.MMPerH)
 		}
 	}
+}
+
+func verifyForecastOutput(t *testing.T, output []byte) {
+	t.Helper()
+	var envelope smokeEnvelope
+	if err := json.Unmarshal(output, &envelope); err != nil {
+		t.Fatalf("decode forecast CLI JSON output: %v", err)
+	}
+	if !envelope.OK || envelope.Command != "forecast" {
+		t.Fatalf("unexpected forecast envelope: ok=%v command=%q", envelope.OK, envelope.Command)
+	}
+
+	var forecast smokeForecastResult
+	if err := json.Unmarshal(envelope.Data, &forecast); err != nil {
+		t.Fatalf("decode forecast result: %v", err)
+	}
+	if len(forecast.PartialErrors) > 0 {
+		t.Fatalf("forecast source failures: %s", strings.Join(forecast.PartialErrors, ", "))
+	}
+	if len(forecast.Entries) < 2 {
+		t.Fatalf("forecast entries = %d, want at least 2", len(forecast.Entries))
+	}
+
+	liveRows := 0
+	nearTermRows := 0
+	dailyRows := 0
+	for i, entry := range forecast.Entries {
+		if entry.Time == "" {
+			t.Fatalf("forecast entry %d has no timestamp", i)
+		}
+		if entry.StationName != nil {
+			liveRows++
+		}
+		if entry.PrecipMmH != nil || entry.PollenGrassPct != nil || entry.PollenTreePct != nil ||
+			entry.PollenBirchPct != nil || entry.PollenWeedPct != nil {
+			nearTermRows++
+		}
+		if entry.MinTempC != nil || entry.MaxTempC != nil {
+			dailyRows++
+			if entry.MinTempC == nil || entry.MaxTempC == nil {
+				t.Fatalf("daily forecast entry %d is missing a temperature bound", i)
+			}
+			if invalidNumber(*entry.MinTempC) || invalidNumber(*entry.MaxTempC) || *entry.MinTempC > *entry.MaxTempC {
+				t.Fatalf("daily forecast entry %d has invalid temperature range", i)
+			}
+			continue
+		}
+		if entry.TempC == nil {
+			t.Fatalf("forecast entry %d at %s has no temperature data", i, entry.Time)
+		}
+		if invalidNumber(*entry.TempC) {
+			t.Fatalf("forecast entry %d has invalid temperature %v", i, *entry.TempC)
+		}
+	}
+	if liveRows == 0 {
+		t.Fatal("forecast contains no live observation")
+	}
+	if nearTermRows == 0 {
+		t.Fatal("forecast contains no rain or pollen timeline rows")
+	}
+	if dailyRows == 0 {
+		t.Fatal("forecast contains no daily temperature ranges")
+	}
+}
+
+func invalidNumber(value float64) bool {
+	return math.IsNaN(value) || math.IsInf(value, 0)
 }
 
 func verifyExtractedKey(t *testing.T, smokeRoot string) {
