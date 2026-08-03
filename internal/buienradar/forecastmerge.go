@@ -308,7 +308,6 @@ func buildForecastEntries(
 	if len(stations) > 0 {
 		if st := NearestStationObs(stations, lat, lon); st != nil {
 			obsEntry := stationObsToEntry(st, lat, lon)
-			result = append(result, *obsEntry)
 
 			amsterdamLoc, _ := time.LoadLocation("Europe/Amsterdam")
 			if amsterdamLoc == nil {
@@ -316,7 +315,9 @@ func buildForecastEntries(
 			}
 			if t, err := time.ParseInLocation("2006-01-02T15:04:05", st.Timestamp, amsterdamLoc); err == nil {
 				obsUTC = t.UTC()
+				obsEntry.UTCTime = obsUTC.Format("2006-01-02T15:04:05")
 			}
+			result = append(result, *obsEntry)
 		}
 	}
 
@@ -327,7 +328,72 @@ func buildForecastEntries(
 		result = append(result, *byUTC[t])
 	}
 
+	fillNearestTemperatures(result)
 	return result
+}
+
+type temperatureAnchor struct {
+	time  time.Time
+	value float64
+}
+
+// fillNearestTemperatures copies the closest hourly temperature onto sparse
+// rain and pollen entries. An exact tie uses the earlier value. Daily rows keep
+// their min/max temperatures and are never filled with an instantaneous value.
+func fillNearestTemperatures(entries []ForecastEntry) {
+	anchors := make([]temperatureAnchor, 0, len(entries))
+	hasHourlyAnchor := false
+	for i := range entries {
+		e := &entries[i]
+		if e.TempC == nil || e.UTCTime == "" {
+			continue
+		}
+		at, err := time.Parse("2006-01-02T15:04:05", e.UTCTime)
+		if err != nil {
+			continue
+		}
+		anchors = append(anchors, temperatureAnchor{time: at, value: *e.TempC})
+		if e.StationName == nil {
+			hasHourlyAnchor = true
+		}
+	}
+	if !hasHourlyAnchor {
+		return
+	}
+
+	for i := range entries {
+		e := &entries[i]
+		if e.TempC != nil || e.UTCTime == "" || !isSparseNearTermEntry(e) {
+			continue
+		}
+		at, err := time.Parse("2006-01-02T15:04:05", e.UTCTime)
+		if err != nil {
+			continue
+		}
+
+		var closest temperatureAnchor
+		var closestDistance time.Duration
+		found := false
+		for _, anchor := range anchors {
+			distance := anchor.time.Sub(at)
+			if distance < 0 {
+				distance = -distance
+			}
+			if !found || distance < closestDistance {
+				closest = anchor
+				closestDistance = distance
+				found = true
+			}
+		}
+		if found {
+			e.TempC = fptr(closest.value)
+		}
+	}
+}
+
+func isSparseNearTermEntry(e *ForecastEntry) bool {
+	return e.PrecipMmH != nil || e.PollenGrassPct != nil || e.PollenTreePct != nil ||
+		e.PollenBirchPct != nil || e.PollenWeedPct != nil
 }
 
 func stationObsToEntry(st *StationObservation, lat, lon float64) *ForecastEntry {

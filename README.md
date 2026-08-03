@@ -89,8 +89,5 @@ Buienradar integration still works:
 ./scripts/smoke-test.sh
 ```
 
-The test builds the CLI, starts with an isolated temporary cache to force a
-fresh API-key extraction, calls all three live rain graph horizons, and checks
-that the key was cached and accepted. It never prints the key and removes the
-temporary cache afterward. Because it uses the real Buienradar services, it is
-kept separate from the regular offline test suite.
+This uses the live Buienradar services to verify API-key extraction and the
+rain and forecast responses.
