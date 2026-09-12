@@ -1,17 +1,5 @@
 package buienradar
 
-import "strings"
-
-// IconCode extracts the icon code (e.g. "c", "ff") from a Buienradar icon URL.
-func IconCode(iconURL string) string {
-	if iconURL == "" {
-		return ""
-	}
-	parts := strings.Split(iconURL, "/")
-	last := parts[len(parts)-1]
-	return strings.TrimSuffix(last, ".png")
-}
-
 // Condition maps a Buienradar icon code to a stable English condition label.
 // Source: https://github.com/mjj4791/python-buienradar/blob/master/buienradar/buienradar_json.py
 func Condition(iconCode string) string {

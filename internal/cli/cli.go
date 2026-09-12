@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/benoitdion/buienradarcli/internal/buienradar"
+	"github.com/benoitdion/buienradarcli/buienradar"
 	"github.com/spf13/cobra"
 )
 

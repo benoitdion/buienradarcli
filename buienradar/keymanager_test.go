@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/benoitdion/buienradarcli/internal/buienradar"
+	"github.com/benoitdion/buienradarcli/buienradar"
 )
 
 const (

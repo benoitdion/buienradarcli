@@ -14,6 +14,16 @@ Or build from source:
 go build -o buienradarcli .
 ```
 
+## Library
+
+```go
+client := buienradar.NewClient()
+forecast, err := client.MergedRainForecast(ctx, 52.3676, 4.9041)
+```
+
+Import `github.com/benoitdion/buienradarcli/buienradar`. Use
+`NewClientWithHTTP` when the caller owns tracing, retries, or transport policy.
+
 ## Quickstart
 
 ```bash
