@@ -55,9 +55,7 @@ type ForecastEntry struct {
 	PollenBirchPct *float64 `json:"pollen_birch_pct,omitempty"`
 	PollenWeedPct  *float64 `json:"pollen_weed_pct,omitempty"`
 
-	// Condition
-	Condition *string `json:"condition,omitempty"`
-	IconCode  *string `json:"icon_code,omitempty"`
+	Conditions *Conditions `json:"conditions,omitempty"`
 }
 
 // WeatherForecast is the result of MergedWeatherForecast.
@@ -287,9 +285,8 @@ func buildForecastEntries(
 			if day.Visibility > 0 {
 				fe.VisibilityM = fptr(day.Visibility)
 			}
-			if day.IconCode != "" {
-				fe.IconCode = sptr(day.IconCode)
-				fe.Condition = sptr(Condition(day.IconCode))
+			if c, ok := day.Conditions(); ok {
+				fe.Conditions = &c
 			}
 		}
 	}
@@ -431,9 +428,8 @@ func stationObsToEntry(st *StationObservation, lat, lon float64) *ForecastEntry 
 	if st.RainFallLast24Hour > 0 {
 		e.Rain24hMm = fptr(st.RainFallLast24Hour)
 	}
-	if st.IconCode != "" {
-		e.IconCode = sptr(st.IconCode)
-		e.Condition = sptr(Condition(st.IconCode))
+	if c, ok := st.Conditions(); ok {
+		e.Conditions = &c
 	}
 	return e
 }

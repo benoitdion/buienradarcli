@@ -42,8 +42,8 @@ var CommandSpecs = []CommandSpec{
 		Auth:    "none", Safety: "read",
 		Options: commonLocOpts,
 		Output: "Flat entries[] timeline. First entry: live station observation (temp, wind, humidity, " +
-			"pressure, precip, pollen, condition). Subsequent near-term entries: 5-min rain+pollen with " +
-			"the closest hourly temperature. Further out: daily min/max temp, precip, wind, condition (up to 14 days). " +
+			"pressure, precip, pollen, conditions). Subsequent near-term entries: 5-min rain+pollen with " +
+			"the closest hourly temperature. Further out: daily min/max temp, precip, wind, conditions (up to 14 days). " +
 			"All fields are absent when not available for that entry.",
 		Description: "Blends observations.buienradar.nl (live), graphdata (rain/pollen/temp), " +
 			"and forecast.buienradar.nl (14-day). partial_errors[] lists any sources that failed; " +
@@ -64,7 +64,7 @@ var CommandSpecs = []CommandSpec{
 		Options: []SpecOption{
 			{Name: "filter", Type: "string", Description: "Substring match on station name (case-insensitive)"},
 		},
-		Output: "Station id, name, lat, lon, temperature, condition.",
+		Output: "Station id, name, lat, lon, temperature, conditions.",
 	},
 }
 

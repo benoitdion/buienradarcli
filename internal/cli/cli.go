@@ -224,7 +224,7 @@ func newForecastCmd(rt *Runtime) *cobra.Command {
 					"feels_like_c", "wind_speed_ms", "wind_bft", "wind_direction",
 					"humidity_pct", "pressure_hpa", "precip_mm_h", "precip_mm",
 					"pollen_grass_pct", "pollen_tree_pct", "pollen_birch_pct", "pollen_weed_pct",
-					"condition",
+					"clouds", "precipitation", "fog",
 				}
 				WritePlain(rt.Out, rows, plainKeys)
 				return nil
@@ -348,17 +348,17 @@ func rainBar(mmh float64) string {
 }
 
 type stationOut struct {
-	StationID     int     `json:"station_id"`
-	StationName   string  `json:"station_name"`
-	Region        string  `json:"region"`
-	Lat           float64 `json:"lat"`
-	Lon           float64 `json:"lon"`
-	Timestamp     string  `json:"timestamp"`
-	TemperatureC  float64 `json:"temperature_c"`
-	HumidityPct   float64 `json:"humidity_pct"`
-	WindSpeedMS   float64 `json:"wind_speed_ms"`
-	WindDirection string  `json:"wind_direction"`
-	Condition     string  `json:"condition"`
+	StationID     int                    `json:"station_id"`
+	StationName   string                 `json:"station_name"`
+	Region        string                 `json:"region"`
+	Lat           float64                `json:"lat"`
+	Lon           float64                `json:"lon"`
+	Timestamp     string                 `json:"timestamp"`
+	TemperatureC  float64                `json:"temperature_c"`
+	HumidityPct   float64                `json:"humidity_pct"`
+	WindSpeedMS   float64                `json:"wind_speed_ms"`
+	WindDirection string                 `json:"wind_direction"`
+	Conditions    *buienradar.Conditions `json:"conditions,omitempty"`
 }
 
 func newStationsCmd(rt *Runtime) *cobra.Command {
@@ -381,7 +381,7 @@ func newStationsCmd(rt *Runtime) *cobra.Command {
 				if needle != "" && !strings.Contains(strings.ToLower(s.StationName), needle) {
 					continue
 				}
-				out = append(out, stationOut{
+				station := stationOut{
 					StationID:     s.StationID,
 					StationName:   s.StationName,
 					Region:        s.Regio,
@@ -392,8 +392,11 @@ func newStationsCmd(rt *Runtime) *cobra.Command {
 					HumidityPct:   s.Humidity,
 					WindSpeedMS:   s.WindSpeed,
 					WindDirection: s.WindDirection,
-					Condition:     buienradar.Condition(s.IconCode),
-				})
+				}
+				if c, ok := s.Conditions(); ok {
+					station.Conditions = &c
+				}
+				out = append(out, station)
 			}
 			sort.Slice(out, func(i, j int) bool { return out[i].StationName < out[j].StationName })
 
@@ -403,23 +406,24 @@ func newStationsCmd(rt *Runtime) *cobra.Command {
 			case OutputPlain:
 				rows := make([]map[string]string, 0, len(out))
 				for _, s := range out {
-					rows = append(rows, map[string]string{
-						"id":        fmt.Sprintf("%d", s.StationID),
-						"name":      s.StationName,
-						"region":    s.Region,
-						"lat":       fmt.Sprintf("%.4f", s.Lat),
-						"lon":       fmt.Sprintf("%.4f", s.Lon),
-						"temp_c":    fmt.Sprintf("%.1f", s.TemperatureC),
-						"wind_ms":   fmt.Sprintf("%.1f", s.WindSpeedMS),
-						"condition": s.Condition,
-					})
+					row := map[string]string{
+						"id":      fmt.Sprintf("%d", s.StationID),
+						"name":    s.StationName,
+						"region":  s.Region,
+						"lat":     fmt.Sprintf("%.4f", s.Lat),
+						"lon":     fmt.Sprintf("%.4f", s.Lon),
+						"temp_c":  fmt.Sprintf("%.1f", s.TemperatureC),
+						"wind_ms": fmt.Sprintf("%.1f", s.WindSpeedMS),
+					}
+					addConditionsPlain(row, s.Conditions)
+					rows = append(rows, row)
 				}
-				WritePlain(rt.Out, rows, []string{"id", "name", "region", "lat", "lon", "temp_c", "wind_ms", "condition"})
+				WritePlain(rt.Out, rows, []string{"id", "name", "region", "lat", "lon", "temp_c", "wind_ms", "clouds", "precipitation", "fog"})
 				return nil
 			default:
 				for _, s := range out {
 					fmt.Fprintf(rt.Out, "%-30s %-20s %6.2f,%6.2f  %5.1f°C  %s\n",
-						s.StationName, s.Region, s.Lat, s.Lon, s.TemperatureC, s.Condition)
+						s.StationName, s.Region, s.Lat, s.Lon, s.TemperatureC, conditionsText(s.Conditions))
 				}
 				return nil
 			}
@@ -479,10 +483,31 @@ func forecastEntryToPlain(e buienradar.ForecastEntry) map[string]string {
 	if e.PollenWeedPct != nil {
 		row["pollen_weed_pct"] = fmt.Sprintf("%.0f", *e.PollenWeedPct)
 	}
-	if e.Condition != nil {
-		row["condition"] = *e.Condition
-	}
+	addConditionsPlain(row, e.Conditions)
 	return row
+}
+
+func addConditionsPlain(row map[string]string, c *buienradar.Conditions) {
+	if c == nil {
+		return
+	}
+	row["clouds"] = string(c.Clouds)
+	row["precipitation"] = string(c.Precipitation)
+	row["fog"] = fmt.Sprintf("%t", c.Fog)
+}
+
+func conditionsText(c *buienradar.Conditions) string {
+	if c == nil {
+		return ""
+	}
+	parts := []string{strings.ReplaceAll(string(c.Clouds), "-", " ")}
+	if c.Precipitation != buienradar.PrecipitationNone {
+		parts = append(parts, strings.ReplaceAll(string(c.Precipitation), "-", " "))
+	}
+	if c.Fog {
+		parts = append(parts, "fog")
+	}
+	return strings.Join(parts, ", ")
 }
 
 func renderForecastText(w io.Writer, wf *buienradar.WeatherForecast) error {
@@ -497,8 +522,8 @@ func renderForecastText(w io.Writer, wf *buienradar.WeatherForecast) error {
 				dist = fmt.Sprintf(" (%.1f km)", *e.DistanceKM)
 			}
 			cond := ""
-			if e.Condition != nil {
-				cond = "  " + *e.Condition
+			if e.Conditions != nil {
+				cond = "  " + conditionsText(e.Conditions)
 			}
 			fmt.Fprintf(w, "%s  %s%s%s\n", e.Time, *e.StationName, dist, cond)
 			if e.TempC != nil {
@@ -580,8 +605,8 @@ func renderForecastText(w io.Writer, wf *buienradar.WeatherForecast) error {
 			}
 			line += fmt.Sprintf("  %.1f m/s%s", *e.WindSpeedMS, dir)
 		}
-		if e.Condition != nil {
-			line += "  " + *e.Condition
+		if e.Conditions != nil {
+			line += "  " + conditionsText(e.Conditions)
 		}
 		if e.PollenGrassPct != nil {
 			line += fmt.Sprintf("  pollen g%.0f", *e.PollenGrassPct)

@@ -68,11 +68,11 @@ directory. Set `BUIENRADAR_API_KEY` or pass `--api-key` to override it.
 
 ## Conditions
 
-Icon codes are normalized to stable English labels:
-`clear`, `partly-cloudy`, `cloudy`, `fog`, `light-rain`, `heavy-rain`,
-`rain-showers`, `thunderstorm`, `light-snow`, `heavy-snow`, `snow-showers`,
-`rain-and-snow`, `partly-cloudy-rain`. The original Dutch description and icon
-code are preserved alongside.
+Weather is described without provider codes, as a `conditions` object:
+
+- `clouds`: `clear`, `mostly-sunny`, `partly-cloudy`, `mostly-cloudy`, `cloudy`
+- `precipitation`: `none`, `light-rain`, `rain`, `thunderstorm`, `light-snow`, `snow`, `sleet`
+- `fog`, `night`: booleans
 
 ## For agents
 
