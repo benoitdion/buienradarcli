@@ -174,7 +174,7 @@ func buildForecastEntries(
 	dayForecast *ForecastResponse,
 ) []ForecastEntry {
 	parseUTC := func(s string) (time.Time, bool) {
-		t, err := time.Parse("2006-01-02T15:04:05", s)
+		t, err := time.Parse(dateTimeLayout, s)
 		return t, err == nil
 	}
 
@@ -184,7 +184,7 @@ func buildForecastEntries(
 		if e, ok := byUTC[utc]; ok {
 			return e
 		}
-		e := &ForecastEntry{Time: localTime, UTCTime: utc.Format("2006-01-02T15:04:05")}
+		e := &ForecastEntry{Time: localTime, UTCTime: utc.Format(dateTimeLayout)}
 		byUTC[utc] = e
 		return e
 	}
@@ -310,9 +310,9 @@ func buildForecastEntries(
 			if amsterdamLoc == nil {
 				amsterdamLoc = time.FixedZone("CET", 2*3600)
 			}
-			if t, err := time.ParseInLocation("2006-01-02T15:04:05", st.Timestamp, amsterdamLoc); err == nil {
+			if t, err := time.ParseInLocation(dateTimeLayout, st.Timestamp, amsterdamLoc); err == nil {
 				obsUTC = t.UTC()
-				obsEntry.UTCTime = obsUTC.Format("2006-01-02T15:04:05")
+				obsEntry.UTCTime = obsUTC.Format(dateTimeLayout)
 			}
 			result = append(result, *obsEntry)
 		}
@@ -345,7 +345,7 @@ func fillNearestTemperatures(entries []ForecastEntry) {
 		if e.TempC == nil || e.UTCTime == "" {
 			continue
 		}
-		at, err := time.Parse("2006-01-02T15:04:05", e.UTCTime)
+		at, err := time.Parse(dateTimeLayout, e.UTCTime)
 		if err != nil {
 			continue
 		}
@@ -363,7 +363,7 @@ func fillNearestTemperatures(entries []ForecastEntry) {
 		if e.TempC != nil || e.UTCTime == "" || !isSparseNearTermEntry(e) {
 			continue
 		}
-		at, err := time.Parse("2006-01-02T15:04:05", e.UTCTime)
+		at, err := time.Parse(dateTimeLayout, e.UTCTime)
 		if err != nil {
 			continue
 		}

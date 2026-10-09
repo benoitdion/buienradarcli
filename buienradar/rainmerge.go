@@ -110,7 +110,7 @@ func mergeGraphForecasts(forecasts map[string]*GraphForecast) []MergedEntry {
 		interval := g.IntervalMinutes()
 		out := make([]parsedEntry, 0, len(g.Entries))
 		for _, e := range g.Entries {
-			t, err := time.Parse("2006-01-02T15:04:05", e.UTCDateTime)
+			t, err := time.Parse(dateTimeLayout, e.UTCDateTime)
 			if err != nil {
 				continue
 			}
@@ -127,7 +127,7 @@ func mergeGraphForecasts(forecasts map[string]*GraphForecast) []MergedEntry {
 	}
 
 	var all []parsedEntry
-	cutoff := time.Time{} // UTC time of the last appended entry
+	coverageEnd := time.Time{}
 
 	for _, h := range []string{"3h", "8h", "48h"} {
 		g := forecasts[h]
@@ -135,10 +135,21 @@ func mergeGraphForecasts(forecasts map[string]*GraphForecast) []MergedEntry {
 			continue
 		}
 		for _, e := range parse(g, h) {
-			if e.utc.After(cutoff) {
-				all = append(all, e)
-				cutoff = e.utc
+			end := e.utc.Add(time.Duration(e.interval) * time.Minute)
+			if !end.After(coverageEnd) {
+				continue
 			}
+			if e.utc.Before(coverageEnd) {
+				local, err := time.Parse(dateTimeLayout, e.local)
+				if err == nil {
+					e.local = local.Add(coverageEnd.Sub(e.utc)).Format(dateTimeLayout)
+				}
+				e.utc = coverageEnd
+				e.utcStr = coverageEnd.Format(dateTimeLayout)
+				e.interval = int(end.Sub(coverageEnd).Minutes())
+			}
+			all = append(all, e)
+			coverageEnd = end
 		}
 	}
 
