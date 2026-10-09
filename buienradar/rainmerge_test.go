@@ -91,6 +91,17 @@ func TestMergeGraphForecastsCoverage(t *testing.T) {
 			},
 		},
 		{
+			name: "invalid local time retains utc coverage",
+			forecasts: map[string]*GraphForecast{
+				"3h": graph(1, "10:10", "11:10", "10:15", "11:15"),
+				"8h": graph(2, "10:00", "11:00", "10:15", "invalid", "10:30", "11:30"),
+			},
+			want: []MergedEntry{
+				entry("10:10", "11:10", 5, 1, "3h"), entry("10:15", "11:15", 5, 1, "3h"),
+				entry("10:20", "invalid", 10, 2, "8h"), entry("10:30", "11:30", 15, 2, "8h"),
+			},
+		},
+		{
 			name: "singleton has no inferred coverage",
 			forecasts: map[string]*GraphForecast{
 				"3h": graph(1, "10:15", "11:15"),
