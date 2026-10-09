@@ -9,6 +9,7 @@ import (
 )
 
 const (
+	dateTimeLayout           = "2006-01-02T15:04:05"
 	GraphRainHistoryForecast = "https://graphdata.buienradar.nl/3.0/forecast/geo/RainHistoryForecast"
 	GraphRain8Hour           = "https://graphdata.buienradar.nl/3.0/forecast/geo/Rain8Hour"
 	GraphRain24Hour          = "https://graphdata.buienradar.nl/3.0/forecast/geo/Rain24Hour"
@@ -90,8 +91,8 @@ func (g *GraphForecast) IntervalMinutes() int {
 	if len(g.Entries) < 2 {
 		return 0
 	}
-	t1, err1 := time.Parse("2006-01-02T15:04:05", g.Entries[0].UTCDateTime)
-	t2, err2 := time.Parse("2006-01-02T15:04:05", g.Entries[1].UTCDateTime)
+	t1, err1 := time.Parse(dateTimeLayout, g.Entries[0].UTCDateTime)
+	t2, err2 := time.Parse(dateTimeLayout, g.Entries[1].UTCDateTime)
 	if err1 != nil || err2 != nil {
 		return 0
 	}
